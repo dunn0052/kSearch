@@ -1,5 +1,5 @@
-#include <common_inc/CLI.hh>
-#include <common_inc/Logger.hh>
+#include <common/CLI.hh>
+#include <common/Logger.hh>
 #include <indexer/inc/DirectoryWatcher.hh>
 
 int main(int argc, char* argv[])

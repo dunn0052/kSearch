@@ -6,8 +6,8 @@
 #include <vector>
 #include <sstream>
 #include <iostream>
-#include <common_inc/Logger.hh>
-#include <common_inc/retcode.hh>
+#include <common/Logger.hh>
+#include <common/Retcode.hh>
 
 namespace CLI
 {

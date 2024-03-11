@@ -11,7 +11,7 @@
 #include <sstream>
 #include <iostream>
 #include <string>
-#include <common_inc/TextModifiers.hh>
+#include <common/TextModifiers.hh>
 #include <mutex>
 
 #if __LOG_SHOW_TIME

@@ -14,4 +14,4 @@ set(CMAKE_CXX_STANDARD 17
 project("kSearch")
 
 add_subdirectory(indexer)
-#add_subdirectory(searcher)
+add_subdirectory(searcher)

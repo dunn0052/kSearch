@@ -33,15 +33,7 @@
     // Timeout
     constexpr RETCODE RTN_TIMEOUT = 0x0080;
 
-    #define IS_RETCODE_OK( RET ) (RTN_OK == RET)
-
-    #define RETURN_RETCODE_IF_NOT_OK( RET ) \
-    do{\
-        RETCODE retcode = RET;\
-        if(!IS_RETCODE_OK(retcode)) \
-        {\
-            return retcode;\
-        }\
-    }while(0)
+    // Lock failed
+    constexpr RETCODE RTN_LOCK_ERROR = 0x0100;
 
 #endif

@@ -1,5 +1,8 @@
 #include <indexer/inc/DirectoryWatcher.hh>
-#include <common_inc/Logger.hh>
+#include <common/Logger.hh>
+#include <common/qcDB.hh>
+
+#include <database/INDEX.hh>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -8,6 +11,7 @@
 #include <signal.h>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 constexpr size_t EVENT_SIZE = sizeof(struct inotify_event);
 constexpr size_t BUFFER_SIZE = 1024 * (EVENT_SIZE + 16);
@@ -22,7 +26,7 @@ static void quitSignal(int sig)
     g_watchingForChanges = false;
 }
 
-static RETCODE MonitorDirectory(const std::string& directory, int fd, size_t& numWatchers)
+static RETCODE MonitorDirectory(qcDB::dbInterface<INDEX>& database, const std::string& directory, int fd, size_t& numWatchers)
 {
     RETCODE retcode = RTN_OK;
 
@@ -64,6 +68,8 @@ static RETCODE MonitorDirectory(const std::string& directory, int fd, size_t& nu
         return RTN_FAIL;
     }
 
+    std::vector<INDEX> files;
+
     struct dirent* entry = nullptr;
     while(nullptr != (entry = readdir(directoryToWatch)))
     {
@@ -71,8 +77,14 @@ static RETCODE MonitorDirectory(const std::string& directory, int fd, size_t& nu
         {
             if('.' != entry->d_name[0])
             {
-                retcode |= MonitorDirectory(directory + "/" + entry->d_name, fd, numWatchers);
+                retcode |= MonitorDirectory(database, directory + "/" + entry->d_name, fd, numWatchers);
             }
+        }
+        else if(DT_REG == entry->d_type)
+        {
+            INDEX file = { 0 };
+            strncpy(file.PATH, (directory + "/" + entry->d_name).c_str(), sizeof(file.PATH));
+            files.push_back(file);
         }
     }
 
@@ -85,13 +97,17 @@ static RETCODE MonitorDirectory(const std::string& directory, int fd, size_t& nu
             strerror(error));
     }
 
+    retcode |= database.WriteObjects(files);
+
     return retcode;
 }
 
-static RETCODE PollDirectories(const std::string directory, int fd)
+static RETCODE PollDirectories(qcDB::dbInterface<INDEX>& database, const std::string directory, int fd)
 {
     LOG_INFO("Starting to monitor directory: ", directory);
 
+    RETCODE retcode = RTN_OK;
+    size_t record = 0;
     char buffer[BUFFER_SIZE] = { 0 };
 
     while (g_watchingForChanges)
@@ -107,12 +123,54 @@ static RETCODE PollDirectories(const std::string directory, int fd)
             struct inotify_event* notify_event = reinterpret_cast<struct inotify_event*>(event);
             if (IN_CREATE & notify_event->mask)
             {
-                LOG_INFO("File/directory created: ", g_watcherMap[notify_event->wd], "/", notify_event->name);
+                std::string filePath = g_watcherMap[notify_event->wd] + "/" + notify_event->name;
+                LOG_INFO("File/directory created: ", filePath);
+
+                INDEX newFile = { 0 };
+                strcpy(newFile.PATH, filePath.c_str());
+                retcode = database.WriteObject(newFile);
+                if(RTN_OK == retcode)
+                {
+                    LOG_DEBUG("Added: ", filePath, " to index database");
+                }
+                else
+                {
+                    LOG_WARN("Error adding: ", filePath, " to index database due to error: ", retcode);
+                }
             }
 
             if (IN_DELETE & notify_event->mask)
             {
+                std::string filePath = g_watcherMap[notify_event->wd] + "/" + notify_event->name;
+
                 LOG_INFO("File/directory deleted: ", g_watcherMap[notify_event->wd], "/", notify_event->name);
+
+                retcode = database.FindFirstOf
+                (
+                    [&](const INDEX *file) -> bool
+                    {
+                        return !strcmp(file->PATH, filePath.c_str());
+                    },
+                    record
+                );
+
+                if(RTN_OK == retcode)
+                {
+                    retcode = database.DeleteObject(record);
+                    if(RTN_OK == retcode)
+                    {
+                        LOG_DEBUG("Deleted: ", filePath, " from index database");
+                    }
+                    else
+                    {
+                        LOG_WARN("Error deleting: ", filePath, " to index database due to error: ", retcode);
+                    }
+                }
+                else
+                {
+                    LOG_WARN("Error finding: ", filePath, " in index for deletion");
+                }
+
             }
 
             event += sizeof(struct inotify_event) + notify_event->len;
@@ -131,6 +189,19 @@ RETCODE StartWatchingDirectory(const std::string& directory)
     signal(SIGQUIT, quitSignal);
     signal(SIGINT, quitSignal);
 
+    std::string databasePath = "/home/osboxes/Documents/Projects/kSearch/database/INDEX.qcdb";
+    qcDB::dbInterface<INDEX> database(databasePath);
+
+    LOG_INFO("Reindexing directory: ", directory);
+    LOG_DEBUG("Clearing index database: ", databasePath);
+    RETCODE retcode = database.Clear();
+    if(RTN_OK != retcode)
+    {
+        LOG_ERROR("Could not clear index database: ", databasePath, " due to error: ", retcode);
+        return retcode;
+    }
+    LOG_DEBUG("Finished clearing index database: ", databasePath);
+
     int fd = -1;
     size_t numWatchers = 0;
     fd = inotify_init();
@@ -140,7 +211,7 @@ RETCODE StartWatchingDirectory(const std::string& directory)
         return RTN_FAIL;
     }
 
-    RETCODE retcode = MonitorDirectory(directory, fd, numWatchers);
+    retcode = MonitorDirectory(database, directory, fd, numWatchers);
     if(RTN_OK != retcode)
     {
         close(fd);
@@ -156,7 +227,7 @@ RETCODE StartWatchingDirectory(const std::string& directory)
         retcode = RTN_FAIL;
     }
 
-    retcode = PollDirectories(directory, fd);
+    retcode = PollDirectories(database, directory, fd);
     if(RTN_OK != retcode)
     {
         close(fd);
