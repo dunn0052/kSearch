@@ -24,10 +24,6 @@ int main(int argc, char* argv[])
     }
 
     std::string directory = directoryArg.GetValue();
-    if('/' == directory.back())
-    {
-        directory.pop_back();
-    }
 
     retcode = StartWatchingDirectory(directory);
 

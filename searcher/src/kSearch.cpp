@@ -12,22 +12,17 @@ RETCODE SearchPattern(const std::string& pattern)
     std::string databasePath = "/home/osboxes/Documents/Projects/kSearch/database/INDEX.qcdb";
     qcDB::dbInterface<INDEX> database(databasePath);
 
-    std::vector<size_t> matchRecords;
-    std::vector<INDEX> matchObjects;
+    std::vector<INDEX> matches;
 
     std::regex regexPattern(pattern);
     RETCODE retcode = database.FindObjects
     (
         [&](const INDEX* searchObject) -> bool
         {
-            if(std::regex_search(searchObject->PATH, regexPattern))
-            {
-                matchObjects.push_back(*searchObject);
-            }
-
-            return false;
+            //return std::string(searchObject->PATH).find(pattern) != std::string::npos;
+            return std::regex_search(searchObject->PATH, regexPattern);
         },
-        matchRecords
+        matches
     );
 
     if(RTN_OK != retcode)
@@ -35,10 +30,12 @@ RETCODE SearchPattern(const std::string& pattern)
         LOG_WARN("Error while finding matches: ", retcode);
     }
 
-    for(INDEX& match: matchObjects)
+    for(INDEX& match: matches)
     {
         LOG_INFO(match.PATH);
     }
+
+    LOG_INFO("Found: ", matches.size(), " records");
 
     return retcode;
 }

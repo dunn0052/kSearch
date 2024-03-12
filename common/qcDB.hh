@@ -11,12 +11,14 @@
 #include <Windows.h>
 #else
 #include <sys/mman.h>
+#include <unistd.h>
 #endif
 
 #include <iostream>
 #include <algorithm>
 #include <functional>
 #include <cstring>
+#include <thread>
 
 #include <common/Retcode.hh>
 #include <common/DBHeader.hh>
@@ -101,6 +103,11 @@ public:
             }
 
             reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
+            if(reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
+            {
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+            }
+
             memcpy(p_object, &objectWrite, sizeof(object));
 
             lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
@@ -124,15 +131,22 @@ public:
             }
 
             object* currentObject = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader));
-            for(size_t record = 0; record < NumberOfRecords(); record++)
+            size_t record = 0;
+            for(record = 0; record < NumberOfRecords(); record++)
             {
                 if(std::memcmp(currentObject, &emptyObject, sizeof(object)) == 0)
                 {
                     reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
                     memcpy(currentObject, &objectWrite, sizeof(object));
+                    break;
                 }
 
                 currentObject++;
+            }
+
+            if(reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
+            {
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
             }
 
             lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
@@ -168,6 +182,10 @@ public:
             }
 
             reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = std::get<0>(objects.back());
+            if(reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < std::get<0>(objects.back()))
+            {
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = std::get<0>(objects.back());
+            }
 
             lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
             if(0 != lockError)
@@ -190,7 +208,8 @@ public:
             }
 
             object* currentObject = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader));
-            for(size_t record = 0; record < NumberOfRecords(); record++)
+            size_t record = 0;
+            for(record = 0; record < NumberOfRecords(); record++)
             {
                 if(std::memcmp(currentObject, &emptyObject, sizeof(object)) == 0)
                 {
@@ -206,6 +225,11 @@ public:
                 }
 
                 currentObject++;
+            }
+
+            if(reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
+            {
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
             }
 
             lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
@@ -225,7 +249,43 @@ public:
         RETCODE DeleteObject(size_t record)
         {
             object deletedObject = { 0 };
-            return WriteObject(record, deletedObject);
+            char* p_object = Get(record);
+            if(nullptr == p_object)
+            {
+                return RTN_NULL_OBJ;
+            }
+
+            int lockError = pthread_rwlock_wrlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
+            if(0 != lockError)
+            {
+                return RTN_LOCK_ERROR;
+            }
+            size_t size = reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size;
+
+            memset(p_object, 0, sizeof(object));
+
+            // If the deleted record was the last one, find the next last record
+            if(size == record)
+            {
+                for(;p_object != m_DBAddress; p_object -= sizeof(object))
+                {
+                    --record;
+                    if(std::memcmp(p_object, &deletedObject, sizeof(object)) != 0)
+                    {
+                        break;
+                    }
+                }
+
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+            }
+
+            lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
+            if(0 != lockError)
+            {
+                return RTN_LOCK_ERROR;
+            }
+
+            return RTN_OK;
         }
 
         RETCODE Clear(void)
@@ -244,6 +304,7 @@ public:
                 memset(start, 0, dbSize);
 
                 reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = 0;
+                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = 0;
 
                 lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
                 if(0 != lockError)
@@ -268,7 +329,8 @@ public:
             }
 
             const object* currentObject = reinterpret_cast<const object*>(m_DBAddress + sizeof(DBHeader));
-            for(size_t record = 0; record < NumberOfRecords(); record++)
+            size_t size = reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size;
+            for(size_t record = 0; record < size; record++)
             {
                 if(predicate(currentObject))
                 {
@@ -288,8 +350,23 @@ public:
             return RTN_OK;
         }
 
-        RETCODE FindObjects(Predicate predicate, std::vector<size_t>& out_MatchingObjects)
+        static void FinderThread(Predicate predicate, const object* currentObject, size_t numRecords, std::vector<object>& results)
         {
+            for(size_t record = 0; record < numRecords; record++)
+            {
+                if(predicate(++currentObject))
+                {
+                    results.push_back(*currentObject);
+                }
+            }
+        }
+
+        RETCODE FindObjects(Predicate predicate, std::vector<object>& out_MatchingObjects)
+        {
+            long numThreads = sysconf(_SC_NPROCESSORS_ONLN);
+            std::vector<std::thread> threads;
+            std::vector<std::vector<object>> results(numThreads);
+
             int lockError = pthread_rwlock_rdlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
             if(0 != lockError)
             {
@@ -297,20 +374,46 @@ public:
             }
 
             const object* currentObject = reinterpret_cast<const object*>(m_DBAddress + sizeof(DBHeader));
-            for(size_t record = 0; record < NumberOfRecords(); record++)
+            size_t size = reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size;
+            size_t segmentSize = size / numThreads;
+
+            for(size_t threadIndex = 0; threadIndex < numThreads - 1; threadIndex++)
+            {
+                threads.emplace_back(FinderThread, predicate, currentObject, segmentSize, std::ref(results[threadIndex]));
+                currentObject += segmentSize;
+            }
+
+            threads.emplace_back(FinderThread, predicate, currentObject, size - ((numThreads - 1) * segmentSize), std::ref(results[numThreads - 1]));
+
+            for(std::thread& thread : threads)
+            {
+                thread.join();
+            }
+#if 0
+            const object* currentObject = reinterpret_cast<const object*>(m_DBAddress + sizeof(DBHeader));
+            size_t size = reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size;
+            for(size_t record = 0; record < size; record++)
             {
                 if(predicate(currentObject))
                 {
-                    out_MatchingObjects.push_back(record);
+                    out_MatchingObjects.push_back(std::tuple<size_t, object>(record, *currentObject));
                 }
 
                 currentObject++;
             }
-
+#endif
             lockError = pthread_rwlock_unlock(&reinterpret_cast<DBHeader*>(m_DBAddress)->m_DBLock);
             if(0 != lockError)
             {
                 return RTN_LOCK_ERROR;
+            }
+
+            for(std::vector<object>& matches : results)
+            {
+                for(object& match : matches)
+                {
+                    out_MatchingObjects.push_back(match);
+                }
             }
 
             return RTN_OK;
