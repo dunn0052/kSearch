@@ -1,3 +1,5 @@
+#include <common/OSdefines.hh>
+
 #include <indexer/inc/DirectoryWatcher.hh>
 #include <common/Logger.hh>
 #include <common/qcDB.hh>
@@ -5,9 +7,13 @@
 #include <database/INDEX.hh>
 
 #include <fcntl.h>
+#ifdef WINDOWS_PLATFORM
+#include <Windows.h>
+#else
 #include <unistd.h>
 #include <sys/inotify.h>
 #include <dirent.h>
+#endif
 #include <signal.h>
 #include <thread>
 #include <unordered_map>
@@ -186,7 +192,11 @@ static RETCODE PollDirectories(qcDB::dbInterface<INDEX>& database, const std::st
 
 RETCODE StartWatchingDirectory(const std::string& directory)
 {
+#ifdef WINDOWS_PLATFORM
+    signal(SIGBREAK, quitSignal);
+#else
     signal(SIGQUIT, quitSignal);
+#endif
     signal(SIGINT, quitSignal);
 
     std::string databasePath = "/home/osboxes/Documents/Projects/kSearch/database/INDEX.qcdb";
@@ -204,38 +214,57 @@ RETCODE StartWatchingDirectory(const std::string& directory)
 
     int fd = -1;
     size_t numWatchers = 0;
+#ifdef WINDOWS_PLATFORM
+    HANDLE hNotif = FindFirstChangeNotificationA(directory.c_str(), TRUE, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME);
+#else
     fd = inotify_init();
     if(0 > fd)
     {
         LOG_ERROR("Failed to initialize inotify");
         return RTN_FAIL;
     }
+#endif
 
     retcode = MonitorDirectory(database, directory, fd, numWatchers);
     if(RTN_OK != retcode)
     {
+#ifdef WINDOWS_PLATFORM
+        CloseHandle(hNotif);
+#else
         close(fd);
+#endif
         LOG_WARN("Error while starting to monitor directory: ", directory);
         return retcode;
     }
 
     LOG_INFO("Watching: ", numWatchers, " directories");
 
+#ifdef WINDOWS_PLATFORM
+#else
     if(0 > fcntl(fd, F_SETFL, O_NONBLOCK))
     {
         LOG_WARN("Could not set non-blocking status for watcher fd: ", fd);
         retcode = RTN_FAIL;
     }
+#endif
 
     retcode = PollDirectories(database, directory, fd);
     if(RTN_OK != retcode)
     {
+#ifdef WINDOWS_PLATFORM
+        CloseHandle(hNotif);
+#else
         close(fd);
+#endif
         LOG_WARN("Error polling directory: ", directory);
         return retcode;
     }
 
+#ifdef WINDOWS_PLATFORM
+    CloseHandle(hNotif);
+#else
     close(fd);
+#endif
 
     return retcode;
 }
