@@ -11,7 +11,14 @@ set(CMAKE_CXX_STANDARD 17
   INTERPROCEDURAL_OPTIMIZATION False
 )
 
-project("kSearch")
+set(QCDB_SEARCH qcDBSearch)
 
-add_subdirectory(indexer)
-add_subdirectory(searcher)
+set(COMPONENT_KSEARCH kSearch)
+set(COMPONENT_WINDEX windex)
+set(COMPONENT_INDEXER indexer)
+
+project(${QCDB_SEARCH})
+
+#add_subdirectory(${COMPONENT_INDEXER})
+add_subdirectory(${COMPONENT_WINDEX})
+add_subdirectory(${COMPONENT_KSEARCH})

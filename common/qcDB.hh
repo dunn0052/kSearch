@@ -15,6 +15,7 @@
 #include <iostream>
 #include <algorithm>
 #include <functional>
+#include <thread>
 
 #include <common/Retcode.hh>
 #include <common/DBHeader.hh>
@@ -128,9 +129,9 @@ public:
                 return retcode;
             }
 
-            object* currentObject = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader));
-            size_t record = 0;
-            for (record = 0; record < NumberOfRecords(); record++)
+            size_t record = reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten;
+            object* currentObject = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader) + record * sizeof(object));
+            for (; record < NumberOfRecords(); record++)
             {
                 if (std::memcmp(currentObject, &emptyObject, sizeof(object)) == 0)
                 {
@@ -182,7 +183,7 @@ public:
             }
 
             reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = std::get<0>(objects.back());
-            
+
             if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < std::get<0>(objects.back()))
             {
                 reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = std::get<0>(objects.back());
@@ -208,18 +209,18 @@ public:
                 return retcode;
             }
 
-            object* currentObject = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader));
-            size_t record = 0;
-            for (record = 0; record < NumberOfRecords(); record++)
+            size_t record = reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten;
+            object* currentObject = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader) + record * sizeof(object));
+            for (; record < NumberOfRecords(); record++)
             {
                 if (std::memcmp(currentObject, &emptyObject, sizeof(object)) == 0)
                 {
                     if (objectsIterator == objects.end())
                     {
+                        reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
                         break;
                     }
 
-                    reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
                     memcpy(currentObject, &(*objectsIterator), sizeof(object));
 
                     ++objectsIterator;
@@ -368,7 +369,11 @@ public:
         RETCODE FindObjects(Predicate predicate, std::vector<object>& out_MatchingObjects)
         {
             RETCODE retcode = RTN_OK;
+#ifdef WINDOWS_PLATFORM
+            size_t numThreads = std::thread::hardware_concurrency();
+#else
             size_t numThreads = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
             std::vector<std::thread> threads;
             std::vector<std::vector<object>> results(numThreads);
 

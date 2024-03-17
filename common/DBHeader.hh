@@ -4,7 +4,7 @@
 
 #include <common/OSdefines.hh>
 #ifdef WINDOWS_PLATFORM
-using pthread_rwlock_t = bool;
+using pthread_rwlock_t = char[80];
 #else
 #include <pthread.h>
 #endif

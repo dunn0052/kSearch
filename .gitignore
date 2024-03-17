@@ -47,9 +47,15 @@ CMakeFiles/
 
 #vs
 .vs/
+*.vcxproj*
+*.sln
 
 #profiler
 *.json
+
+# db files
+*.skm
+*.qcdb
 
 # generated gtest
 _deps

@@ -9,9 +9,6 @@
 #include <common/Logger.hh>
 #include <common/Retcode.hh>
 
-namespace CLI
-{
-
 /* USAGE:
  *
  */
@@ -110,8 +107,7 @@ namespace CLI
 
                 if(m_IsRequired)
                 {
-                    os << TextMod::Modifier(TextMod::FG_RED) << " (Required)"
-                       << TextMod::Modifier(TextMod::FG_DEFAULT);
+                    os << " (Required)";
                 }
 
                 os << "]: ";
@@ -152,14 +148,14 @@ namespace CLI
             }
             catch(std::invalid_argument const& except)
             {
-                LOG_WARN("Could not convert ", m_Option, " with argument ", conversion, " because it could not be converted to an integer!");
+                LOG_WARN("Could not convert ", m_Option, " with argument ", conversion, " due to error: ", except.what());
                 m_InUse = false;
                 return false;
 
             }
             catch(std::out_of_range const& except)
             {
-                LOG_WARN("Could not convert ", m_Option, " with argument ", conversion, " because the number is too large!");
+                LOG_WARN("Could not convert ", m_Option, " with argument ", conversion, " due to error: ", except.what());
                 m_InUse = false;
                 return false;
             }
@@ -275,7 +271,7 @@ namespace CLI
             friend std::ostream&
             operator << (std::ostream& os, const Parser& parser)
             {
-                os << TextMod::Modifier(TextMod::FG_DEFAULT) << parser.m_Name <<": " << parser.m_Description << std::endl;
+                os << parser.m_Name << ": " << parser.m_Description << std::endl;
 
                 std::map<std::string, CLI_Argument_Interface*>::const_iterator arg;
                 for(arg = parser.m_Arguments.begin(); arg != parser.m_Arguments.end(); arg++)
@@ -292,6 +288,5 @@ namespace CLI
             std::map<std::string ,CLI_Argument_Interface*> m_Arguments;
             CLI_Argument_Interface* m_CurrentArgument = nullptr;
     };
-}
 
 #endif

@@ -1,4 +1,4 @@
-#include <searcher/inc/kSearch.hh>
+#include <kSearch/inc/kSearch.hh>
 
 #include <common/qcDB.hh>
 #include <common/Logger.hh>
@@ -7,11 +7,8 @@
 
 #include <regex>
 
-RETCODE SearchPattern(const std::string& pattern)
+RETCODE SearchPattern(const std::string& pattern, qcDB::dbInterface<INDEX>& database)
 {
-    std::string databasePath = "/home/osboxes/Documents/Projects/kSearch/database/INDEX.qcdb";
-    qcDB::dbInterface<INDEX> database(databasePath);
-
     std::vector<INDEX> matches;
 
     std::regex regexPattern(pattern);
@@ -19,8 +16,8 @@ RETCODE SearchPattern(const std::string& pattern)
     (
         [&](const INDEX* searchObject) -> bool
         {
-            //return std::string(searchObject->PATH).find(pattern) != std::string::npos;
-            return std::regex_search(searchObject->PATH, regexPattern);
+            return std::string(searchObject->PATH).find(pattern) != std::string::npos;
+            //return std::regex_search(searchObject->PATH, regexPattern);
         },
         matches
     );
@@ -35,7 +32,7 @@ RETCODE SearchPattern(const std::string& pattern)
         LOG_INFO(match.PATH);
     }
 
-    LOG_INFO("Found: ", matches.size(), " records");
+    LOG_INFO("Found: ", matches.size(), " files");
 
     return retcode;
 }
