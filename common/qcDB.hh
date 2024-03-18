@@ -369,10 +369,11 @@ public:
         RETCODE FindObjects(Predicate predicate, std::vector<object>& out_MatchingObjects)
         {
             RETCODE retcode = RTN_OK;
+            // Number of threads /2 so we don't completely lock up the CPU
 #ifdef WINDOWS_PLATFORM
-            size_t numThreads = std::thread::hardware_concurrency();
+            size_t numThreads = std::thread::hardware_concurrency() / 2;
 #else
-            size_t numThreads = sysconf(_SC_NPROCESSORS_ONLN);
+            size_t numThreads = sysconf(_SC_NPROCESSORS_ONLN) / 2;
 #endif
             std::vector<std::thread> threads;
             std::vector<std::vector<object>> results(numThreads);

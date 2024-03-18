@@ -43,6 +43,7 @@ int main(int argc, char* argv[])
     long long totalNumFiles = 0;
 
     retcode = IndexDirectory(directory, database, totalNumFiles);
+    std::cout << "\n";
     LOG_INFO("Completed: ", directoryArg.GetValue(), " with ", totalNumFiles, " files");
 
     return retcode;

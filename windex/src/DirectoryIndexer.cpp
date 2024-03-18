@@ -20,10 +20,7 @@ RETCODE IndexDirectory(const std::string& directory, qcDB::dbInterface<INDEX>& d
             if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
                 std::string subDirectory = directory + '\\' + findData.cFileName;
-                if(RTN_OK != IndexDirectory(subDirectory, database, totalNumFiles));
-                {
-                    LOG_WARN("Error indexing directory: ", subDirectory);
-                }
+                IndexDirectory(subDirectory, database, totalNumFiles);
                 continue;
             }
 
@@ -45,16 +42,19 @@ RETCODE IndexDirectory(const std::string& directory, qcDB::dbInterface<INDEX>& d
     }
     else
     {
+        #if 0
         LOG_WARN("Could not find files in directory: ",
             searchPath,
             " due to: ",
             ErrorString(GetLastError()));
-        return RTN_NOT_FOUND;
+        #endif
     }
 
-    database.WriteObjects(files);
-
-    std::cout << "\r" << totalNumFiles;
+    if(!files.empty())
+    {
+        database.WriteObjects(files);
+        std::cout << "\rFiles indexed: " << totalNumFiles;
+    }
 
     return RTN_OK;
 }
