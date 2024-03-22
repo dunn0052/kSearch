@@ -16,17 +16,7 @@ RETCODE SearchPattern(const std::string& pattern, qcDB::dbInterface<DIRECTORYPAT
     (
         [&](const FILENAME* searchObject) -> bool
         {
-            if(std::string(searchObject->PATH).find(pattern) != std::string::npos)
-            {
-                DIRECTORYPATH directory = {0};
-                directoryDatabase.ReadObject(searchObject->DIRECTORY, directory);
-                std::string fullPath = std::string(directory.PATH) + searchObject->PATH;
-                LOG_INFO(fullPath);
-
-                return true;
-            }
-
-            return false;
+            return std::string(searchObject->PATH).find(pattern) != std::string::npos;
             //return std::regex_search(searchObject->PATH, regexPattern);
         },
         matches
@@ -37,15 +27,20 @@ RETCODE SearchPattern(const std::string& pattern, qcDB::dbInterface<DIRECTORYPAT
         LOG_WARN("Error while finding matches: ", retcode);
     }
 
-#if 0
+    size_t lastDirRecord = 0;
+    DIRECTORYPATH directory = {0};
     for(FILENAME& match: matches)
     {
-        DIRECTORYPATH directory = {0};
-        directoryDatabase.ReadObject(match.DIRECTORY, directory);
+        if(match.DIRECTORY == lastDirRecord)
+        {
+            lastDirRecord = match.DIRECTORY;
+            directoryDatabase.ReadObject(match.DIRECTORY, directory);
+        }
+
         std::string fullPath = std::string(directory.PATH) + match.PATH;
-        LOG_INFO(fullPath);
+        //LOG_INFO(fullPath);
     }
-#endif
+
     LOG_INFO("Found: ", matches.size(), " files");
 
     return retcode;
