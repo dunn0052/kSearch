@@ -1,12 +1,23 @@
 #include <windex/inc/DirectoryIndexer.hh>
 #include <common/Logger.hh>
 
-RETCODE IndexDirectory(const std::string& directory, qcDB::dbInterface<INDEX>& database, long long& totalNumFiles)
+RETCODE IndexDirectory(const std::string& directory, qcDB::dbInterface<DIRECTORYPATH>& dirDatabase, qcDB::dbInterface<FILENAME>& fileDatabase ,long long& totalNumFiles)
 {
+    RETCODE retcode = RTN_OK;
     WIN32_FIND_DATAA findData = { 0 };
     std::string searchPath = directory + "\\*.*";
     HANDLE hFind = FindFirstFileA(searchPath.c_str(), &findData);
-    std::vector<INDEX> files;
+    std::vector<FILENAME> files;
+
+    DIRECTORYPATH directoryObject = {0};
+    errno_t error =  strncpy_s(directoryObject.PATH, directory.c_str(), sizeof(directoryObject.PATH));
+    if(error)
+    {
+        LOG_WARN("Error copying file path to database entry: ", findData.cFileName);
+        return retcode;
+    }
+    retcode = dirDatabase.WriteObject(directoryObject);
+    size_t directoryRecord = dirDatabase.LastWrittenRecord();
 
     if (INVALID_HANDLE_VALUE != hFind)
     {
@@ -20,17 +31,18 @@ RETCODE IndexDirectory(const std::string& directory, qcDB::dbInterface<INDEX>& d
             if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
                 std::string subDirectory = directory + '\\' + findData.cFileName;
-                IndexDirectory(subDirectory, database, totalNumFiles);
+                IndexDirectory(subDirectory, dirDatabase, fileDatabase, totalNumFiles);
                 continue;
             }
 
-            INDEX fileEntry = {0};
-            std::string fullPath = directory + '\\' + findData.cFileName;
-            errno_t error =  strncpy_s(fileEntry.PATH, fullPath.c_str(), fullPath.length());
+            FILENAME fileEntry = {0};
+            errno_t error =  strncpy_s(fileEntry.PATH, findData.cFileName, sizeof(fileEntry.PATH));
             if(error)
             {
                 LOG_WARN("Error copying file path to database entry: ", findData.cFileName);
+                return retcode;
             }
+            fileEntry.DIRECTORY = directoryRecord;
 
             files.push_back(fileEntry);
             totalNumFiles++;
@@ -52,7 +64,12 @@ RETCODE IndexDirectory(const std::string& directory, qcDB::dbInterface<INDEX>& d
 
     if(!files.empty())
     {
-        database.WriteObjects(files);
+        retcode = fileDatabase.WriteObjects(files);
+        if(RTN_OK != retcode)
+        {
+            LOG_WARN("Could not write files for directory: ", directory);
+            return retcode;
+        }
         std::cout << "\rFiles indexed: " << totalNumFiles;
     }
 

@@ -30,6 +30,7 @@ public:
 
         RETCODE ReadObject(size_t record, object& out_object)
         {
+            RETCODE retcode = RTN_OK;
             char* p_object = Get(record);
             if(nullptr == p_object)
             {
@@ -41,7 +42,6 @@ public:
             {
                 return retcode;
             }
-
 
             memcpy(&out_object, p_object, sizeof(object));
 
@@ -197,6 +197,7 @@ public:
 
             return RTN_OK;
         }
+
         RETCODE WriteObjects(std::vector<object>& objects)
         {
             RETCODE retcode = RTN_OK;
@@ -430,6 +431,7 @@ public:
 
         inline size_t LastWrittenRecord(void)
         {
+            RETCODE retcode = RTN_OK;
             size_t lastWittenRecord = 0;
 
             if (m_IsOpen)

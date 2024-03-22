@@ -16,9 +16,11 @@ set(QCDB_SEARCH qcDBSearch)
 set(COMPONENT_KSEARCH kSearch)
 set(COMPONENT_WINDEX windex)
 set(COMPONENT_INDEXER indexer)
+set(COMPONENT_KMONITOR kMonitor)
 
 project(${QCDB_SEARCH})
 
 #add_subdirectory(${COMPONENT_INDEXER})
 add_subdirectory(${COMPONENT_WINDEX})
 add_subdirectory(${COMPONENT_KSEARCH})
+add_subdirectory(${COMPONENT_KMONITOR})

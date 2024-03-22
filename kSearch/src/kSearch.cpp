@@ -7,16 +7,26 @@
 
 #include <regex>
 
-RETCODE SearchPattern(const std::string& pattern, qcDB::dbInterface<INDEX>& database)
+RETCODE SearchPattern(const std::string& pattern, qcDB::dbInterface<DIRECTORYPATH>& directoryDatabase, qcDB::dbInterface<FILENAME>& filenameDatabase)
 {
-    std::vector<INDEX> matches;
+    std::vector<FILENAME> matches;
 
     std::regex regexPattern(pattern);
-    RETCODE retcode = database.FindObjects
+    RETCODE retcode = filenameDatabase.FindObjects
     (
-        [&](const INDEX* searchObject) -> bool
+        [&](const FILENAME* searchObject) -> bool
         {
-            return std::string(searchObject->PATH).find(pattern) != std::string::npos;
+            if(std::string(searchObject->PATH).find(pattern) != std::string::npos)
+            {
+                DIRECTORYPATH directory = {0};
+                directoryDatabase.ReadObject(searchObject->DIRECTORY, directory);
+                std::string fullPath = std::string(directory.PATH) + searchObject->PATH;
+                LOG_INFO(fullPath);
+
+                return true;
+            }
+
+            return false;
             //return std::regex_search(searchObject->PATH, regexPattern);
         },
         matches
@@ -27,11 +37,15 @@ RETCODE SearchPattern(const std::string& pattern, qcDB::dbInterface<INDEX>& data
         LOG_WARN("Error while finding matches: ", retcode);
     }
 
-    for(INDEX& match: matches)
+#if 0
+    for(FILENAME& match: matches)
     {
-        LOG_INFO(match.PATH);
+        DIRECTORYPATH directory = {0};
+        directoryDatabase.ReadObject(match.DIRECTORY, directory);
+        std::string fullPath = std::string(directory.PATH) + match.PATH;
+        LOG_INFO(fullPath);
     }
-
+#endif
     LOG_INFO("Found: ", matches.size(), " files");
 
     return retcode;
