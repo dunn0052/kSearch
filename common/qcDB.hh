@@ -137,21 +137,27 @@ public:
                 {
                     reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
                     memcpy(currentObject, &objectWrite, sizeof(object));
+
+                    if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
+                    {
+                        reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+                    }
+
                     break;
                 }
 
                 currentObject++;
             }
 
-            if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
-            {
-                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
-            }
-
             retcode = UnlockDB();
             if (RTN_OK != retcode)
             {
                 return retcode;
+            }
+
+            if(NumberOfRecords() == record)
+            {
+                return RTN_NOT_FOUND;
             }
 
             return RTN_OK;
@@ -336,7 +342,8 @@ public:
 
             const object* currentObject = reinterpret_cast<const object*>(m_DBAddress + sizeof(DBHeader));
             size_t size = reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size;
-            for (size_t record = 0; record < size; record++)
+            size_t record = 0;
+            for (record = 0; record < size; record++)
             {
                 if (predicate(currentObject))
                 {
@@ -351,6 +358,11 @@ public:
             if (RTN_OK != retcode)
             {
                 return retcode;
+            }
+
+            if(record == size)
+            {
+                return RTN_NOT_FOUND;
             }
 
             return RTN_OK;
@@ -466,14 +478,15 @@ public:
             HANDLE hFile = CreateFileA(
                 static_cast<LPCSTR>(dbPath.c_str()), // File name
                 GENERIC_READ | GENERIC_WRITE,        // Access mode
-                FILE_SHARE_READ,                     // Share mode
+                FILE_SHARE_READ | FILE_SHARE_WRITE,  // Share mode
                 NULL,                                // Security attributes
-                OPEN_ALWAYS,                         // How to create
+                OPEN_EXISTING,                         // How to create
                 FILE_ATTRIBUTE_NORMAL,               // File attributes
                 NULL                                 // Handle to template file
             );
 
-            if (hFile == INVALID_HANDLE_VALUE) {
+            if (hFile == INVALID_HANDLE_VALUE)
+            {
                 return;
             }
 

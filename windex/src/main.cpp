@@ -5,7 +5,6 @@
 int main(int argc, char* argv[])
 {
     CLI_StringArgument directoryArg("--directory", "The directory to start watching", true);
-    //CLI_StringArgument databaseArg("-d", "The path to the INDEX database", true);
     CLI_StringArgument directoryDatabaseArg("-d", "The path to the DIRECTORYPATH database (DIRECTORYPATH.qcdb)", true);
     CLI_StringArgument filenameDatabaseArg("-f", "The path to the FILENAME database (FILENAME.qcdb)", true);
 
@@ -14,7 +13,6 @@ int main(int argc, char* argv[])
         .AddArg(directoryArg)
         .AddArg(directoryDatabaseArg)
         .AddArg(filenameDatabaseArg);
-        //.AddArg(databaseArg);
 
     RETCODE retcode = parser.ParseCommandLineArguments(argc, argv);
     if (RTN_OK != retcode)
@@ -30,7 +28,6 @@ int main(int argc, char* argv[])
     }
 
     std::string directory = directoryArg.GetValue();
-    //qcDB::dbInterface<INDEX> database(databaseArg.GetValue());
     qcDB::dbInterface<DIRECTORYPATH> directoryDatabase(directoryDatabaseArg.GetValue());
     qcDB::dbInterface<FILENAME> filenameDatabase(filenameDatabaseArg.GetValue());
 

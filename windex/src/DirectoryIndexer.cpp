@@ -42,11 +42,10 @@ RETCODE IndexDirectory(const std::string& directory, qcDB::dbInterface<DIRECTORY
                 LOG_WARN("Error copying file path to database entry: ", findData.cFileName);
                 return retcode;
             }
-            fileEntry.DIRECTORY = directoryRecord;
+            fileEntry.DIRECTORY_RECORD = directoryRecord;
 
             files.push_back(fileEntry);
             totalNumFiles++;
-
 
         } while (FindNextFileA(hFind, &findData) != 0);
 

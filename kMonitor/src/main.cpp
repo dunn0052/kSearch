@@ -9,10 +9,12 @@ int main(int argc, char* argv[])
     Parser parser("kMonitor", "Monitor for file additions and deletions");
     CLI_StringArgument directoryDatabaseArg("-d", "The path to the DIRECTORYPATH database (DIRECTORYPATH.qcdb)", true);
     CLI_StringArgument filenameDatabaseArg("-f", "The path to the FILENAME database (FILENAME.qcdb)", true);
+    CLI_IntArgument waitTimeArg("-w", "Interval to wait for file changes in milliseconds. Use 0 for infinite.", false);
 
     parser
         .AddArg(directoryDatabaseArg)
-        .AddArg(filenameDatabaseArg);
+        .AddArg(filenameDatabaseArg)
+        .AddArg(waitTimeArg);
 
     RETCODE retcode = parser.ParseCommandLineArguments(argc, argv);
     if(RTN_OK != retcode)
@@ -32,7 +34,13 @@ int main(int argc, char* argv[])
         return RTN_NOT_FOUND;
     }
 
-    retcode = MonitorDirectory(rootDirectory.PATH, dirDatabase, filenameDatabase);
+    size_t waitTime = 0;
+    if(waitTimeArg.IsInUse())
+    {
+        waitTime = waitTimeArg.GetValue();
+    }
+
+    retcode = MonitorDirectory(rootDirectory.PATH, dirDatabase, filenameDatabase, waitTime);
 
     return retcode;
 

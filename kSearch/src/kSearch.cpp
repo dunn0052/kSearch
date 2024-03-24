@@ -3,7 +3,7 @@
 #include <common/qcDB.hh>
 #include <common/Logger.hh>
 
-#include <database/INDEX.hh>
+#include <common/StringConversion.hh>
 
 #include <regex>
 
@@ -31,14 +31,22 @@ RETCODE SearchPattern(const std::string& pattern, qcDB::dbInterface<DIRECTORYPAT
     DIRECTORYPATH directory = {0};
     for(FILENAME& match: matches)
     {
-        if(match.DIRECTORY == lastDirRecord)
+        if(match.DIRECTORY_RECORD != lastDirRecord)
         {
-            lastDirRecord = match.DIRECTORY;
-            directoryDatabase.ReadObject(match.DIRECTORY, directory);
+            lastDirRecord = match.DIRECTORY_RECORD;
+            retcode = directoryDatabase.ReadObject(lastDirRecord, directory);
+            if(RTN_OK != retcode)
+            {
+                LOG_WARN("Failed to find directory for file: ",
+                    match.PATH,
+                    " which has directory record of: ",
+                    lastDirRecord);
+                return retcode;
+            }
         }
 
-        std::string fullPath = std::string(directory.PATH) + match.PATH;
-        //LOG_INFO(fullPath);
+        std::string fullPath = std::string(directory.PATH) + "\\" + match.PATH;
+        LOG_INFO(fullPath);
     }
 
     LOG_INFO("Found: ", matches.size(), " files");

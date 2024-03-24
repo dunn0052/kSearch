@@ -8,8 +8,8 @@ int main(int argc, char* argv[])
     Parser parser("kSearch", "Search for a file");
 
     CLI_StringArgument patternArg("-p", "The regex pattern to search", true);
-    CLI_StringArgument directoryDatabaseArg("-d", "The path to the DIRECTORYPATH database (DIRECTORYPATH.qcdb)");
-    CLI_StringArgument filenameDatabaseArg("-f", "The path to the FILENAME database (FILENAME.qcdb)");
+    CLI_StringArgument directoryDatabaseArg("-d", "The path to the DIRECTORYPATH database (DIRECTORYPATH.qcdb)", true);
+    CLI_StringArgument filenameDatabaseArg("-f", "The path to the FILENAME database (FILENAME.qcdb)", true);
 
     parser
         .AddArg(patternArg)
