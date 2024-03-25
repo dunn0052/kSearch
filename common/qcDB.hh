@@ -334,6 +334,7 @@ public:
         RETCODE FindFirstOf(Predicate predicate, size_t& out_Record)
         {
             RETCODE retcode = RTN_OK;
+            bool found = false;
             retcode = LockDB();
             if (RTN_OK != retcode)
             {
@@ -348,6 +349,7 @@ public:
                 if (predicate(currentObject))
                 {
                     out_Record = record;
+                    found = true;
                     break;
                 }
 
@@ -360,7 +362,7 @@ public:
                 return retcode;
             }
 
-            if(record == size)
+            if(!found)
             {
                 return RTN_NOT_FOUND;
             }

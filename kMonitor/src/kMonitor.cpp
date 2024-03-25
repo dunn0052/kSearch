@@ -31,7 +31,7 @@ RETCODE SplitFilePath(const std::string& path, std::string& directory, std::stri
     return RTN_OK;
 }
 
-static RETCODE AddFile(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>& dirDatabase, qcDB::dbInterface<FILENAME>& filenameDatabase)
+static RETCODE AddPath(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>& dirDatabase, qcDB::dbInterface<FILENAME>& filenameDatabase)
 {
     RETCODE retcode = RTN_OK;
     std::string fileName;
@@ -79,10 +79,7 @@ static RETCODE AddFile(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>
 
         record = dirDatabase.LastWrittenRecord();
 
-        LOG_INFO("Added new directory: ",
-            fileDirectory,
-            " to add file: ",
-            fileName);
+        LOG_INFO("Added directory: ", fileDirectory);
     }
 
     FILENAME filenameObject = {0};
@@ -107,7 +104,7 @@ static RETCODE AddFile(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>
     return RTN_OK;
 }
 
-static RETCODE RemoveFile(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>& dirDatabase, qcDB::dbInterface<FILENAME>& fileDatabase)
+static RETCODE RemovePath(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>& dirDatabase, qcDB::dbInterface<FILENAME>& fileDatabase)
 {
     RETCODE retcode = RTN_OK;
     std::string fileName;
@@ -212,7 +209,7 @@ RETCODE GetRenameRecord(const std::string& path, qcDB::dbInterface<DIRECTORYPATH
     (
         [&](const FILENAME *filename) -> bool
         {
-            return !strcmp(filename->PATH, fileName.c_str()) && filename->DIRECTORY_RECORD == dirRecord;
+            return !strcmp(filename->PATH, fileName.c_str()) && (filename->DIRECTORY_RECORD == dirRecord);
         },
         fileRecord
     );
@@ -315,27 +312,6 @@ RETCODE MonitorDirectory(const std::string& directory, qcDB::dbInterface<DIRECTO
     BYTE* buffer = new BYTE[FILE_CHANGE_BUFFER_SIZE];
     DWORD bytesReturned = 0;
 
-    BOOL result = ReadDirectoryChangesW(
-        hDir,
-        buffer,
-        FILE_CHANGE_BUFFER_SIZE,
-        TRUE,
-        FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
-        &bytesReturned,
-        &overlapped,
-        NULL);
-
-    if (!result)
-    {
-        LOG_FATAL("Error reading directory changess for: ",
-            directory,
-            " due to error: ",
-            ErrorString(GetLastError()));
-
-        CloseHandle(hDir);
-        return RTN_NULL_OBJ;
-    }
-
     if(0 == waitTime)
     {
         waitTime = INFINITE;
@@ -346,6 +322,27 @@ RETCODE MonitorDirectory(const std::string& directory, qcDB::dbInterface<DIRECTO
     DWORD dw = 0;
     while (g_IsMonitoring)
     {
+        BOOL result = ReadDirectoryChangesW(
+            hDir,
+            buffer,
+            FILE_CHANGE_BUFFER_SIZE,
+            TRUE,
+            FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
+            &bytesReturned,
+            &overlapped,
+            NULL);
+
+        if (!result)
+        {
+            LOG_FATAL("Error reading directory changess for: ",
+                directory,
+                " due to error: ",
+                ErrorString(GetLastError()));
+
+            CloseHandle(hDir);
+            return RTN_NULL_OBJ;
+        }
+
         DWORD dwWaitResult = WaitForSingleObjectEx(overlapped.hEvent, waitTime, FALSE);
         if (WAIT_OBJECT_0 == dwWaitResult)
         {
@@ -361,7 +358,7 @@ RETCODE MonitorDirectory(const std::string& directory, qcDB::dbInterface<DIRECTO
                 {
                     std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
                     std::string fullPath = directory + "\\" + ConvertToUTF8(wFileName);
-                    retcode = AddFile(fullPath, dirDatabase, filenameDatabase);
+                    retcode = AddPath(fullPath, dirDatabase, filenameDatabase);
                     if(RTN_OK == retcode)
                     {
                         LOG_INFO("File added: ", fullPath);
@@ -374,7 +371,7 @@ RETCODE MonitorDirectory(const std::string& directory, qcDB::dbInterface<DIRECTO
                     std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
                     std::string fullPath = directory + "\\" + ConvertToUTF8(wFileName);
 
-                    retcode = RemoveFile(fullPath, dirDatabase, filenameDatabase);
+                    retcode = RemovePath(fullPath, dirDatabase, filenameDatabase);
                     if(RTN_OK == retcode)
                     {
                         LOG_INFO("File deleted: ", fullPath);
@@ -403,13 +400,20 @@ RETCODE MonitorDirectory(const std::string& directory, qcDB::dbInterface<DIRECTO
                     }
 
                     std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
-                    std::string filename = ConvertToUTF8(wFileName);
+                    std::string newFileName = directory + '\\' + ConvertToUTF8(wFileName);
 
-                    retcode = RenameRecord(filename, filenameDatabase, renameRecord);
+                    retcode = RenameRecord(newFileName, filenameDatabase, renameRecord);
                     if(RTN_OK == retcode)
                     {
-                        LOG_INFO("Renamed: ", oldFileName, " to: ", directory + "\\" + filename, " for record: ", renameRecord);
+                        LOG_INFO("Renamed: ",
+                            oldFileName,
+                            " to: ",
+                            newFileName,
+                            " for record: ",
+                            renameRecord);
                     }
+                    oldFileName = "";
+
                     break;
                 }
                 default:
@@ -426,27 +430,6 @@ RETCODE MonitorDirectory(const std::string& directory, qcDB::dbInterface<DIRECTO
             }
 
             ResetEvent(overlapped.hEvent);
-
-            BOOL result = ReadDirectoryChangesW(
-                hDir,
-                buffer,
-                FILE_CHANGE_BUFFER_SIZE,
-                TRUE,
-                FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
-                &bytesReturned,
-                &overlapped,
-                NULL);
-
-            if (!result)
-            {
-                LOG_FATAL("Error reading directory changess for: ",
-                    directory,
-                    " due to error: ",
-                    ErrorString(GetLastError()));
-
-                CloseHandle(hDir);
-                return RTN_NULL_OBJ;
-            }
         }
     }
 

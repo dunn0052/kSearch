@@ -19,4 +19,15 @@ static std::string ErrorString(int errornum)
 #endif
 }
 
+static bool isDirectory(const std::string& path)
+{
+#ifdef WINDOWS_PLATFORM
+    DWORD attributes = GetFileAttributesA(path.c_str());
+    return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    // implement later for Linux
+    return false;
+#endif
+}
+
 #endif
