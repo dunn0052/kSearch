@@ -34,34 +34,86 @@ RETCODE SplitFilePath(const std::string& path, std::string& directory, std::stri
 static RETCODE AddPath(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>& dirDatabase, qcDB::dbInterface<FILENAME>& filenameDatabase)
 {
     RETCODE retcode = RTN_OK;
-    std::string fileName;
-    std::string fileDirectory;
 
-    retcode = SplitFilePath(path, fileDirectory, fileName);
-    if(RTN_OK != retcode)
+    if(!isDirectory(path))
     {
-        LOG_WARN("Could not get path components for path: ", path);
-        return retcode;
-    }
+        std::string fileName;
+        std::string fileDirectory;
 
-    size_t record = 0;
-    retcode = dirDatabase.FindFirstOf
-    (
-        [&](const DIRECTORYPATH *directory) -> bool
+        retcode = SplitFilePath(path, fileDirectory, fileName);
+        if(RTN_OK != retcode)
         {
-            return !strcmp(directory->PATH, fileDirectory.c_str());
-        },
-        record
-    );
+            LOG_WARN("Could not get path components for path: ", path);
+            return retcode;
+        }
 
-    if(RTN_NOT_FOUND == retcode)
+        size_t record = 0;
+        retcode = dirDatabase.FindFirstOf
+        (
+            [&](const DIRECTORYPATH *directory) -> bool
+            {
+                return !strcmp(directory->PATH, fileDirectory.c_str());
+            },
+            record
+        );
+
+        if(RTN_NOT_FOUND == retcode)
+        {
+            DIRECTORYPATH directoryObject = {0};
+            errno_t error = strcpy_s(directoryObject.PATH, fileDirectory.c_str());
+            if(error)
+            {
+                LOG_WARN("Could not copy: ",
+                    fileDirectory,
+                    " to directory object due to error: ",
+                    ErrorString((error)));
+                return RTN_BAD_ARG;
+            }
+
+            retcode = dirDatabase.WriteObject(directoryObject);
+            if(RTN_OK != retcode)
+            {
+                LOG_WARN("Could not write: ",
+                    fileDirectory,
+                    " to directory database due to error: ",
+                    retcode);
+                return retcode;
+            }
+
+            record = dirDatabase.LastWrittenRecord();
+
+            LOG_INFO("Added directory: ", fileDirectory);
+        }
+
+        FILENAME filenameObject = {0};
+        errno_t error = strcpy_s(filenameObject.PATH, fileName.c_str());
+        if(error)
+        {
+            LOG_WARN("Could not write: ", fileName, " to file name database");
+            return RTN_BAD_ARG;
+        }
+
+        filenameObject.DIRECTORY_RECORD = record;
+        retcode = filenameDatabase.WriteObject(filenameObject);
+        if(RTN_OK != retcode)
+        {
+            LOG_WARN("Could not write: ",
+                path,
+                " to file name database due to error: ",
+                retcode);
+            return retcode;
+        }
+
+        LOG_INFO("Added file: ", filenameObject.PATH , " with directory record: ", filenameObject.DIRECTORY_RECORD);
+    }
+    else
     {
         DIRECTORYPATH directoryObject = {0};
-        errno_t error = strcpy_s(directoryObject.PATH, fileDirectory.c_str());
+        errno_t error = strcpy_s(directoryObject.PATH, path.c_str());
         if(error)
         {
             LOG_WARN("Could not copy: ",
-                fileDirectory,
+                path,
                 " to directory object due to error: ",
                 ErrorString((error)));
             return RTN_BAD_ARG;
@@ -71,34 +123,13 @@ static RETCODE AddPath(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>
         if(RTN_OK != retcode)
         {
             LOG_WARN("Could not write: ",
-                fileDirectory,
+                path,
                 " to directory database due to error: ",
                 retcode);
             return retcode;
         }
 
-        record = dirDatabase.LastWrittenRecord();
-
-        LOG_INFO("Added directory: ", fileDirectory);
-    }
-
-    FILENAME filenameObject = {0};
-    errno_t error = strcpy_s(filenameObject.PATH, fileName.c_str());
-    if(error)
-    {
-        LOG_WARN("Could not write: ", fileName, " to file name database");
-        return RTN_BAD_ARG;
-    }
-
-    filenameObject.DIRECTORY_RECORD = record;
-    retcode = filenameDatabase.WriteObject(filenameObject);
-    if(RTN_OK != retcode)
-    {
-        LOG_WARN("Could not write: ",
-            fileName,
-            " to file name database due to error: ",
-            retcode);
-        return retcode;
+        LOG_INFO("Added directory: ", directoryObject.PATH);
     }
 
     return RTN_OK;
@@ -107,64 +138,103 @@ static RETCODE AddPath(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>
 static RETCODE RemovePath(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>& dirDatabase, qcDB::dbInterface<FILENAME>& fileDatabase)
 {
     RETCODE retcode = RTN_OK;
-    std::string fileName;
-    std::string fileDirectory;
 
-    retcode = SplitFilePath(path, fileDirectory, fileName);
-    if(RTN_OK != retcode)
+    if(!isDirectory(path))
     {
-        LOG_WARN("Could not get path components for path: ", path);
-        return retcode;
-    }
+        std::string fileName;
+        std::string fileDirectory;
 
-    size_t dirRecord = 0;
-    retcode = dirDatabase.FindFirstOf
-    (
-        [&](const DIRECTORYPATH *directory) -> bool
+        retcode = SplitFilePath(path, fileDirectory, fileName);
+        if(RTN_OK != retcode)
         {
-            return !strcmp(directory->PATH, fileDirectory.c_str());
-        },
-        dirRecord
-    );
+            LOG_WARN("Could not get path components for path: ", path);
+            return retcode;
+        }
 
-    if(RTN_OK != retcode)
-    {
-        LOG_WARN("Directory: ",
-            fileDirectory,
-            " not found for deletion due to error: ",
-            retcode);
-        return retcode;
-    }
+        size_t dirRecord = 0;
+        retcode = dirDatabase.FindFirstOf
+        (
+            [&](const DIRECTORYPATH *directory) -> bool
+            {
+                return !strcmp(directory->PATH, fileDirectory.c_str());
+            },
+            dirRecord
+        );
 
-    size_t fileRecord = 0;
-    retcode = fileDatabase.FindFirstOf
-    (
-        [&](const FILENAME *filename) -> bool
+        if(RTN_OK != retcode)
         {
-            return !strcmp(filename->PATH, fileName.c_str()) && filename->DIRECTORY_RECORD == dirRecord;
-        },
-        fileRecord
-    );
+            LOG_WARN("Directory: ",
+                fileDirectory,
+                " not found for deletion due to error: ",
+                retcode);
+            return retcode;
+        }
 
-    if(RTN_OK != retcode)
-    {
-        LOG_WARN("File: ",
-            path,
-            " with directory record: ",
-            dirRecord,
-            " not found for deletion due to error: ",
-            retcode);
-        return retcode;
+        size_t fileRecord = 0;
+        retcode = fileDatabase.FindFirstOf
+        (
+            [&](const FILENAME *filename) -> bool
+            {
+                return !strcmp(filename->PATH, fileName.c_str()) && (filename->DIRECTORY_RECORD == dirRecord);
+            },
+            fileRecord
+        );
+
+        if(RTN_OK != retcode)
+        {
+            LOG_WARN("File: ",
+                fileName,
+                " with directory record: ",
+                dirRecord,
+                " not found for deletion due to error: ",
+                retcode);
+            return retcode;
+        }
+
+        retcode = fileDatabase.DeleteObject(fileRecord);
+        if(RTN_OK != retcode)
+        {
+            LOG_WARN("File: ",
+                path,
+                " could not be deleted due to error: ",
+                retcode);
+            return retcode;
+        }
+
+        LOG_INFO("Deleted file: ", path);
     }
-
-    retcode = fileDatabase.DeleteObject(fileRecord);
-    if(RTN_OK != retcode)
+    else
     {
-        LOG_WARN("File: ",
-            path,
-            " could not be deleted due to error: ",
-            retcode);
-        return retcode;
+        size_t dirRecord = 0;
+        retcode = dirDatabase.FindFirstOf
+        (
+            [&](const DIRECTORYPATH *directory) -> bool
+            {
+                return !strcmp(directory->PATH, path.c_str());
+            },
+            dirRecord
+        );
+
+        if(RTN_OK != retcode)
+        {
+            LOG_WARN("Directory: ",
+                path,
+                " not found for deletion due to error: ",
+                retcode);
+            return retcode;
+        }
+
+        retcode = dirDatabase.DeleteObject(dirRecord);
+        if(RTN_OK != retcode)
+        {
+            LOG_WARN("File: ",
+                path,
+                " could not be deleted due to error: ",
+                retcode);
+            return retcode;
+        }
+
+        LOG_INFO("Deleted directory: ", path);
     }
 
     return RTN_OK;
@@ -306,16 +376,8 @@ RETCODE MonitorDirectory(const std::string& directory, qcDB::dbInterface<DIRECTO
         return RTN_NOT_FOUND;
     }
 
-    OVERLAPPED overlapped = {0};
-    overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-
     BYTE* buffer = new BYTE[FILE_CHANGE_BUFFER_SIZE];
     DWORD bytesReturned = 0;
-
-    if(0 == waitTime)
-    {
-        waitTime = INFINITE;
-    }
 
     size_t renameRecord = 0;
     std::string oldFileName;
@@ -327,9 +389,9 @@ RETCODE MonitorDirectory(const std::string& directory, qcDB::dbInterface<DIRECTO
             buffer,
             FILE_CHANGE_BUFFER_SIZE,
             TRUE,
-            FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
+            FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME,
             &bytesReturned,
-            &overlapped,
+            NULL,
             NULL);
 
         if (!result)
@@ -339,98 +401,101 @@ RETCODE MonitorDirectory(const std::string& directory, qcDB::dbInterface<DIRECTO
                 " due to error: ",
                 ErrorString(GetLastError()));
 
+            LOG_WARN("Bytes returned: ", bytesReturned);
+
             CloseHandle(hDir);
             return RTN_NULL_OBJ;
         }
 
-        DWORD dwWaitResult = WaitForSingleObjectEx(overlapped.hEvent, waitTime, FALSE);
-        if (WAIT_OBJECT_0 == dwWaitResult)
+        FILE_NOTIFY_INFORMATION* pInfo = reinterpret_cast<FILE_NOTIFY_INFORMATION*>(buffer);
+
+        do
         {
-            GetOverlappedResult(hDir, &overlapped, &dw, FALSE);
-
-            FILE_NOTIFY_INFORMATION* pInfo = reinterpret_cast<FILE_NOTIFY_INFORMATION*>(buffer);
-
-            while (pInfo)
+            switch (pInfo->Action)
             {
-                switch (pInfo->Action)
+            case FILE_ACTION_RENAMED_NEW_NAME:
+            {
+                std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
+                std::string fullPath = directory + "\\" + ConvertToUTF8(wFileName);
+                LOG_INFO("New name: ", fullPath);
+            }
+            case FILE_ACTION_ADDED:
+            {
+                std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
+                std::string fullPath = directory + "\\" + ConvertToUTF8(wFileName);
+                retcode = AddPath(fullPath, dirDatabase, filenameDatabase);
+                break;
+            }
+            case FILE_ACTION_RENAMED_OLD_NAME:
+            {
+                std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
+                std::string fullPath = directory + "\\" + ConvertToUTF8(wFileName);
+                LOG_INFO("Old name: ", fullPath);
+            }
+            case FILE_ACTION_REMOVED:
+            {
+                std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
+                std::string fullPath = directory + "\\" + ConvertToUTF8(wFileName);
+                retcode = RemovePath(fullPath, dirDatabase, filenameDatabase);
+                break;
+            }
+#if 0
+            case FILE_ACTION_RENAMED_OLD_NAME:
+            {
+                std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
+                oldFileName = directory + "\\" + ConvertToUTF8(wFileName);
+
+                retcode = GetRenameRecord(oldFileName, dirDatabase, filenameDatabase, renameRecord);
+                if(RTN_OK != retcode)
                 {
-                case FILE_ACTION_ADDED:
-                {
-                    std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
-                    std::string fullPath = directory + "\\" + ConvertToUTF8(wFileName);
-                    retcode = AddPath(fullPath, dirDatabase, filenameDatabase);
-                    if(RTN_OK == retcode)
-                    {
-                        LOG_INFO("File added: ", fullPath);
-                    }
-
-                    break;
-                }
-                case FILE_ACTION_REMOVED:
-                {
-                    std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
-                    std::string fullPath = directory + "\\" + ConvertToUTF8(wFileName);
-
-                    retcode = RemovePath(fullPath, dirDatabase, filenameDatabase);
-                    if(RTN_OK == retcode)
-                    {
-                        LOG_INFO("File deleted: ", fullPath);
-                    }
-
-                    break;
-                }
-                case FILE_ACTION_RENAMED_OLD_NAME:
-                {
-                    std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
-                    oldFileName = directory + "\\" + ConvertToUTF8(wFileName);
-
-                    retcode = GetRenameRecord(oldFileName, dirDatabase, filenameDatabase, renameRecord);
-                    if(RTN_OK != retcode)
-                    {
-                        oldFileName = "";
-                    }
-
-                    break;
-                }
-                case FILE_ACTION_RENAMED_NEW_NAME:
-                {
-                    if(oldFileName.empty())
-                    {
-                        break;
-                    }
-
-                    std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
-                    std::string newFileName = directory + '\\' + ConvertToUTF8(wFileName);
-
-                    retcode = RenameRecord(newFileName, filenameDatabase, renameRecord);
-                    if(RTN_OK == retcode)
-                    {
-                        LOG_INFO("Renamed: ",
-                            oldFileName,
-                            " to: ",
-                            newFileName,
-                            " for record: ",
-                            renameRecord);
-                    }
                     oldFileName = "";
-
-                    break;
-                }
-                default:
-                    // Other actions can be handled here
-                    break;
                 }
 
-                if(0 == pInfo->NextEntryOffset)
+                LOG_INFO("About to rename file: ", oldFileName);
+
+                break;
+            }
+            case FILE_ACTION_RENAMED_NEW_NAME:
+            {
+                if(oldFileName.empty())
                 {
                     break;
                 }
 
-                pInfo = reinterpret_cast<FILE_NOTIFY_INFORMATION*>(reinterpret_cast<BYTE*>(pInfo) + pInfo->NextEntryOffset);
+                std::wstring wFileName(pInfo->FileName, pInfo->FileNameLength / sizeof(WCHAR));
+                std::string newFileName = directory + '\\' + ConvertToUTF8(wFileName);
+
+                retcode = RenameRecord(newFileName, filenameDatabase, renameRecord);
+                if(RTN_OK == retcode)
+                {
+                    LOG_INFO("Renamed: ",
+                        oldFileName,
+                        " to: ",
+                        newFileName,
+                        " for record: ",
+                        renameRecord);
+                }
+                oldFileName = "";
+
+                break;
+            }
+#endif
+            default:
+                // Other actions can be handled here
+                break;
             }
 
-            ResetEvent(overlapped.hEvent);
-        }
+
+            if(0 == pInfo->NextEntryOffset)
+            {
+                break;
+            }
+
+            pInfo = reinterpret_cast<FILE_NOTIFY_INFORMATION*>(reinterpret_cast<BYTE*>(pInfo) + pInfo->NextEntryOffset);
+
+        } while(pInfo);
+
+        memset(buffer, 0, FILE_CHANGE_BUFFER_SIZE);
     }
 
     CloseHandle(hDir);
