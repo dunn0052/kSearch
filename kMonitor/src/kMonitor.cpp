@@ -18,7 +18,7 @@ static void quitSignal(int sig)
     g_IsMonitoring = false;
 }
 
-RETCODE SplitFilePath(const std::string& path, std::string& directory, std::string& fileName)
+static RETCODE SplitFilePath(const std::string& path, std::string& directory, std::string& fileName)
 {
     size_t splitIndex = path.find_last_of('\\');
     if(splitIndex == std::string::npos)
@@ -240,7 +240,7 @@ static RETCODE RemovePath(const std::string& path, qcDB::dbInterface<DIRECTORYPA
     return RTN_OK;
 }
 
-RETCODE GetRenameRecord(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>& dirDatabase, qcDB::dbInterface<FILENAME>& fileDatabase, size_t& record)
+static RETCODE GetRenameRecord(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>& dirDatabase, qcDB::dbInterface<FILENAME>& fileDatabase, size_t& record)
 {
     RETCODE retcode = RTN_OK;
     std::string fileName;
@@ -300,7 +300,7 @@ RETCODE GetRenameRecord(const std::string& path, qcDB::dbInterface<DIRECTORYPATH
     return RTN_OK;
 }
 
-RETCODE RenameRecord(const std::string& path, qcDB::dbInterface<FILENAME>& fileDatabase, size_t record)
+static RETCODE RenameRecord(const std::string& path, qcDB::dbInterface<FILENAME>& fileDatabase, size_t record)
 {
     RETCODE retcode = RTN_OK;
 
@@ -346,7 +346,6 @@ RETCODE RenameRecord(const std::string& path, qcDB::dbInterface<FILENAME>& fileD
 
     return RTN_OK;
 }
-
 
 RETCODE MonitorDirectory(const std::string& directory, qcDB::dbInterface<DIRECTORYPATH>& dirDatabase, qcDB::dbInterface<FILENAME>& filenameDatabase, size_t waitTime)
 {
