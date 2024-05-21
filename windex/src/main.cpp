@@ -8,7 +8,7 @@ int main(int argc, char* argv[])
     CLI_StringArgument directoryDatabaseArg("-d", "The path to the DIRECTORYPATH database (DIRECTORYPATH.qcdb)", true);
     CLI_StringArgument filenameDatabaseArg("-f", "The path to the FILENAME database (FILENAME.qcdb)", true);
 
-    Parser parser = Parser("kIndexer",
+    Parser parser = Parser("windex",
         "Index and watch for file changes in a given directory")
         .AddArg(directoryArg)
         .AddArg(directoryDatabaseArg)
