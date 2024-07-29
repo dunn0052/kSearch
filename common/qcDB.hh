@@ -28,6 +28,9 @@ namespace qcDB
 
 public:
 
+        /*
+         * Read object at given record.
+         */
         RETCODE ReadObject(size_t record, object& out_object)
         {
             RETCODE retcode = RTN_OK;
@@ -54,8 +57,15 @@ public:
             return RTN_OK;
         }
 
+        /*
+         * Read several objects given a vector of tuples <record, empty object>.
+         * The empty object will have the data of the object of the given record
+         * copied into it.
+         */
         RETCODE ReadObjects(std::vector<std::tuple<size_t, object>>& objects)
         {
+            RETCODE retcode = RTN_OK;
+            // Sort here to be cache friendly
             std::sort(objects.begin(), objects.end(),
                 [](const std::tuple<size_t, object>& a, const std::tuple<size_t, object>& b) {
                 return std::get<0>(a) < std::get<0>(b);
@@ -67,7 +77,6 @@ public:
                 return retcode;
             }
 
-
             for(std::tuple<size_t, object> readObject : objects)
             {
                 char* p_object = Get(std::get<0>(readObject));
@@ -75,7 +84,7 @@ public:
                 {
                     return RTN_NULL_OBJ;
                 }
-                memcpy(&std::get<1>(readObject), p_object, sizeof(readObject));
+                memcpy(&std::get<1>(readObject), p_object, sizeof(object));
             }
 
             retcode = UnlockDB();
@@ -87,6 +96,9 @@ public:
             return RTN_OK;
         }
 
+        /*
+         * Overwrite object data at given record.
+         */
         RETCODE WriteObject(size_t record, object& objectWrite)
         {
             RETCODE retcode = RTN_OK;
@@ -102,10 +114,11 @@ public:
                 return retcode;
             }
 
-            reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
-            if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
+            DBHeader* header = reinterpret_cast<DBHeader*>(m_DBAddress);
+            header->m_LastWritten = record;
+            if (header->m_Size < record)
             {
-                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+                header->m_Size = record;
             }
 
             memcpy(p_object, &objectWrite, sizeof(object));
@@ -119,6 +132,9 @@ public:
             return RTN_OK;
         }
 
+        /*
+         * Write an object at the next available (empty) record.
+         */
         RETCODE WriteObject(object& objectWrite)
         {
             RETCODE retcode = RTN_OK;
@@ -129,18 +145,19 @@ public:
                 return retcode;
             }
 
-            size_t record = reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten;
+            DBHeader* header = reinterpret_cast<DBHeader*>(m_DBAddress);
+            size_t record = header->m_LastWritten;
             object* currentObject = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader) + record * sizeof(object));
             for (; record < NumberOfRecords(); record++)
             {
                 if (std::memcmp(currentObject, &emptyObject, sizeof(object)) == 0)
                 {
-                    reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
+                    header->m_LastWritten = record;
                     memcpy(currentObject, &objectWrite, sizeof(object));
 
-                    if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
+                    if (header->m_Size < record)
                     {
-                        reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+                        header->m_Size = record;
                     }
 
                     break;
@@ -163,14 +180,20 @@ public:
             return RTN_OK;
         }
 
+        /*
+         * Write multiple objects by record. The vector is a list of <record, object data> to
+         * be overwritten at the corresponding record.
+         */
         RETCODE WriteObjects(std::vector<std::tuple<size_t, object>>& objects)
         {
 
             RETCODE retcode = RTN_OK;
             std::sort(objects.begin(), objects.end(),
-                [](const std::tuple<size_t, object>& a, const std::tuple<size_t, object>& b) {
-                return std::get<0>(a) < std::get<0>(b);
-                });
+                [](const std::tuple<size_t, object>& first, const std::tuple<size_t, object>& second)
+                {
+                    return std::get<0>(first) < std::get<0>(second);
+                }
+            );
 
             retcode = LockDB();
             if (RTN_OK != retcode)
@@ -185,14 +208,15 @@ public:
                 {
                     return RTN_NULL_OBJ;
                 }
-                memcpy(p_object, &std::get<1>(writeObject), sizeof(writeObject));
+                memcpy(p_object, &std::get<1>(writeObject), sizeof(object));
             }
 
-            reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = std::get<0>(objects.back());
+            DBHeader* header = reinterpret_cast<DBHeader*>(m_DBAddress);
+            header->m_LastWritten = std::get<0>(objects.back());
 
-            if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < std::get<0>(objects.back()))
+            if (header->m_Size < std::get<0>(objects.back()))
             {
-                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = std::get<0>(objects.back());
+                header->m_Size = std::get<0>(objects.back());
             }
 
             retcode = UnlockDB();
@@ -204,6 +228,9 @@ public:
             return RTN_OK;
         }
 
+        /*
+         * Write multiple objects at the next available (empty) records.
+         */
         RETCODE WriteObjects(std::vector<object>& objects)
         {
             RETCODE retcode = RTN_OK;
@@ -216,15 +243,16 @@ public:
                 return retcode;
             }
 
-            size_t record = reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten;
+            DBHeader* header = reinterpret_cast<DBHeader*>(m_DBAddress);
+            size_t record = header->m_LastWritten;
             object* currentObject = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader) + record * sizeof(object));
             for (; record < NumberOfRecords(); record++)
             {
-                if (std::memcmp(currentObject, &emptyObject, sizeof(object)) == 0)
+                if (0 == std::memcmp(currentObject, &emptyObject, sizeof(object)))
                 {
                     if (objectsIterator == objects.end())
                     {
-                        reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = record;
+                        header->m_LastWritten = record;
                         break;
                     }
 
@@ -236,9 +264,9 @@ public:
                 currentObject++;
             }
 
-            if (reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size < record)
+            if (header->m_Size < record)
             {
-                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+                header->m_Size = record;
             }
 
             retcode = UnlockDB();
@@ -255,6 +283,9 @@ public:
             return RTN_OK;
         }
 
+        /*
+         * Clear out the data at a given record.
+         */
         RETCODE DeleteObject(size_t record)
         {
             RETCODE retcode = RTN_OK;
@@ -270,7 +301,8 @@ public:
             {
                 return retcode;
             }
-            size_t size = reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size;
+            DBHeader* header = reinterpret_cast<DBHeader*>(m_DBAddress);
+            size_t size = header->m_Size;
 
             memset(p_object, 0, sizeof(object));
 
@@ -286,7 +318,7 @@ public:
                     }
                 }
 
-                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = record;
+                header->m_Size = record;
             }
 
             retcode = UnlockDB();
@@ -298,6 +330,9 @@ public:
             return RTN_OK;
         }
 
+        /*
+         * Zero out all data from the database.
+         */
         RETCODE Clear(void)
         {
             RETCODE retcode = RTN_OK;
@@ -309,13 +344,14 @@ public:
                     return retcode;
                 }
 
-                size_t dbSize = reinterpret_cast<DBHeader*>(m_DBAddress)->m_NumRecords * sizeof(object);
+                DBHeader* header = reinterpret_cast<DBHeader*>(m_DBAddress);
+                size_t dbSize = header->m_NumRecords * sizeof(object);
                 object* start = reinterpret_cast<object*>(m_DBAddress + sizeof(DBHeader));
 
                 memset(start, 0, dbSize);
 
-                reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten = 0;
-                reinterpret_cast<DBHeader*>(m_DBAddress)->m_Size = 0;
+                header->m_LastWritten = 0;
+                header->m_Size = 0;
 
                 retcode = UnlockDB();
                 if (RTN_OK != retcode)
@@ -329,8 +365,20 @@ public:
             return RTN_MALLOC_FAIL;
         }
 
+        /*
+         * A user defined search function.
+         * Example lambda function
+         * [](const CHARACTER* character) -> bool
+         * {
+         *    return !strcmp(character->NAME, "KEVIN");
+         * }
+         */
         using Predicate = std::function<bool(const object* currentObject)>;
 
+        /*
+         * If multiple records would match the predicate,
+         * return the record of the first one found.
+         */
         RETCODE FindFirstOf(Predicate predicate, size_t& out_Record)
         {
             RETCODE retcode = RTN_OK;
@@ -370,17 +418,10 @@ public:
             return RTN_OK;
         }
 
-        static void FinderThread(Predicate predicate, const object* currentObject, size_t numRecords, std::vector<object>& results)
-        {
-            for (size_t record = 0; record < numRecords; record++)
-            {
-                if (predicate(++currentObject))
-                {
-                    results.push_back(*currentObject);
-                }
-            }
-        }
-
+        /*
+         * Find objects using the predicate by sharding the database and searching
+         * in parallel.
+         */
         RETCODE FindObjects(Predicate predicate, std::vector<object>& out_MatchingObjects)
         {
             RETCODE retcode = RTN_OK;
@@ -433,6 +474,9 @@ public:
             return RTN_OK;
         }
 
+        /*
+         * Total number of records to be accessed by users.
+         */
         inline size_t NumberOfRecords(void)
         {
             if (m_IsOpen)
@@ -443,10 +487,13 @@ public:
             return 0;
         }
 
-        inline size_t LastWrittenRecord(void)
+        /*
+         * Gather last written record for users.
+         */
+        inline size_t LastWrittenRecord(size_t& record)
         {
             RETCODE retcode = RTN_OK;
-            size_t lastWittenRecord = 0;
+            size_t lastWrittenRecord = 0;
 
             if (m_IsOpen)
             {
@@ -456,7 +503,7 @@ public:
                     return retcode;
                 }
 
-                lastWittenRecord = reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten;
+                record = reinterpret_cast<DBHeader*>(m_DBAddress)->m_LastWritten;
 
                 retcode = UnlockDB();
                 if (RTN_OK != retcode)
@@ -465,8 +512,12 @@ public:
                 }
 
             }
+            else
+            {
+                return RTN_NULL_OBJ;
+            }
 
-            return lastWittenRecord;
+            return retcode;
         }
 
         dbInterface(const std::string& dbPath) :
@@ -580,6 +631,9 @@ public:
 
 protected:
 
+    /*
+     * Lock the DB. Several ways to do this depending on OS.
+     */
     RETCODE LockDB(void)
     {
 #ifdef WINDOWS_PLATFORM
@@ -600,6 +654,9 @@ protected:
         return RTN_OK;
     }
 
+    /*
+     * Unlock the DB. Several ways to do this depending on OS.
+     */
     RETCODE UnlockDB(void)
     {
 #ifdef WINDOWS_PLATFORM
@@ -617,6 +674,11 @@ protected:
 
     return RTN_OK;
     }
+
+    /*
+     * Get a pointer into the database according to the record number.
+     * Returns a nullptr on error.
+     */
     char* Get(const size_t record)
     {
         if(NumberOfRecords() - 1 < record)
@@ -637,6 +699,21 @@ protected:
         }
 
         return m_DBAddress + byte_index;
+    }
+
+    /*
+     * Internal thread function that is used to run the predicate
+     * in parallel in the sharded database.
+     */
+    static void FinderThread(Predicate predicate, const object* currentObject, size_t numRecords, std::vector<object>& results)
+    {
+        for (size_t record = 0; record < numRecords; record++)
+        {
+            if (predicate(++currentObject))
+            {
+                results.push_back(*currentObject);
+            }
+        }
     }
 
     bool m_IsOpen;

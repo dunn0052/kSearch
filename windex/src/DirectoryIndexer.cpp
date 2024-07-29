@@ -17,7 +17,14 @@ RETCODE IndexDirectory(const std::string& directory, qcDB::dbInterface<DIRECTORY
         return retcode;
     }
     retcode = dirDatabase.WriteObject(directoryObject);
-    size_t directoryRecord = dirDatabase.LastWrittenRecord();
+
+    size_t directoryRecord = 0;
+    retcode = dirDatabase.LastWrittenRecord(directoryRecord);
+    if (RTN_OK != retcode)
+    {
+        LOG_WARN("Error gathering directory record due to error: ", retcode);
+        return retcode;
+    }
 
     if (INVALID_HANDLE_VALUE != hFind)
     {

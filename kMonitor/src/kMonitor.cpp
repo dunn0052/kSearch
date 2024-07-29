@@ -80,7 +80,12 @@ static RETCODE AddPath(const std::string& path, qcDB::dbInterface<DIRECTORYPATH>
                 return retcode;
             }
 
-            record = dirDatabase.LastWrittenRecord();
+            retcode = dirDatabase.LastWrittenRecord(record);
+            if (RTN_OK != retcode)
+            {
+                LOG_WARN("Error gathering record due to error: ", retcode);
+                return retcode;
+            }
 
             LOG_INFO("Added directory: ", fileDirectory);
         }
