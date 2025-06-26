@@ -472,6 +472,7 @@ public:
         dbInterface(const std::string& dbPath) :
             m_IsOpen(false), m_Size(0),
             m_DBAddress(nullptr), m_NumRecords(0),
+            m_WindowSize(0), m_CurrentOffset(0);
             m_DBFileDescriptor(INVALID_FD)
 #ifdef WINDOWS_PLATFORM
             , m_DBFileHandle(INVALID_HANDLE_VALUE)
@@ -633,6 +634,7 @@ protected:
 
     return RTN_OK;
     }
+
     char* Get(const size_t record)
     {
         if(NumberOfRecords() - 1 < record)
@@ -655,9 +657,41 @@ protected:
         return m_DBAddress + byte_index;
     }
 
+    void MapWindow(int fd, size_t offset)
+    {
+        m_DBAddress = static_cast<char*>(mmap(nullptr, m_WindowSize,
+            PROT_READ | PROT_WRITE, MAP_SHARED, fd, offset));
+        if (MAP_FAILED == m_DBAddress)
+        {
+            m_DBAddress = nullptr;
+            return;
+        }
+
+        m_CurrentOffset = offset;
+    }
+
+    void RemapWindow(size_t newOffset)
+    {
+        if (m_DBAddress != nullptr)
+        {
+            munmap(m_DBAddress, m_WindowSize);
+        }
+
+        int fd = open(m_DBPath.c_str(), O_RDWR);
+        if (INVALID_FD > fd)
+        {
+            return;
+        }
+
+        MapWindow(fd, newOffset);
+        close(fd);
+    }
+
     bool m_IsOpen;
     size_t m_Size;
     size_t m_NumRecords;
+    size_t m_WindowSize;
+    size_t m_CurrentOffset;
     char* m_DBAddress;
     int m_DBFileDescriptor;
 #ifdef WINDOWS_PLATFORM
