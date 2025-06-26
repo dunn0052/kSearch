@@ -471,13 +471,15 @@ public:
 
         dbInterface(const std::string& dbPath) :
             m_IsOpen(false), m_Size(0),
-            m_DBAddress(nullptr), m_NumRecords(0)
+            m_DBAddress(nullptr), m_NumRecords(0),
+            m_DBFileDescriptor(INVALID_FD)
 #ifdef WINDOWS_PLATFORM
+            , m_DBFileHandle(INVALID_HANDLE_VALUE)
             , m_Mutex(INVALID_HANDLE_VALUE)
 #endif
         {
 #ifdef WINDOWS_PLATFORM
-            HANDLE hFile = CreateFileA(
+            m_DBFileHandle = CreateFileA(
                 static_cast<LPCSTR>(dbPath.c_str()), // File name
                 GENERIC_READ | GENERIC_WRITE,        // Access mode
                 FILE_SHARE_READ | FILE_SHARE_WRITE,  // Share mode
@@ -487,20 +489,21 @@ public:
                 NULL                                 // Handle to template file
             );
 
-            if (hFile == INVALID_HANDLE_VALUE)
+            if (INVALID_HANDLE_VALUE == m_DBFileHandle)
             {
+                CloseHandle(m_DBFileHandle);
                 return;
             }
 
             // Get the file size
             m_Size = static_cast<size_t>(GetFileSize(hFile, NULL));
             if (m_Size == INVALID_FILE_SIZE) {
-                CloseHandle(hFile);
+                CloseHandle(m_DBFileHandle);
                 return;
             }
 
             HANDLE hMapFile = CreateFileMappingA(
-                hFile,                          // File handle
+                m_DBFileHandle,                          // File handle
                 NULL,                           // Security attributes
                 PAGE_READWRITE,                 // Protection
                 0,                              // High-order 32 bits of file size
@@ -509,13 +512,9 @@ public:
             );
 
             if (hMapFile == NULL) {
-                CloseHandle(hFile);
+                CloseHandle(m_DBFileHandle);
                 return;
             }
-
-            // Close the file handle, as it's not needed anymore
-            CloseHandle(hFile);
-
 
             // Map the file to memory
             m_DBAddress = static_cast<char*>(MapViewOfFile(
@@ -534,25 +533,27 @@ public:
                 return;
             }
 #else
-            int fd = open(dbPath.c_str(), O_RDWR);
-            if(INVALID_FD > fd)
+            m_DBFileDescriptor = open(dbPath.c_str(), O_RDWR);
+            if(INVALID_FD > m_DBFileDescriptor)
             {
                 return;
             }
 
             struct stat statbuf;
-            int error = fstat(fd, &statbuf);
+            int error = fstat(m_DBFileDescriptor, &statbuf);
             if(0 > error)
             {
+                close(m_DBFileDescriptor);
                 return;
             }
 
             m_Size = statbuf.st_size;
             m_DBAddress = static_cast<char*>(mmap(nullptr, m_Size,
                     PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE,
-                    fd, 0));
+                    m_DBFileDescriptor, 0));
             if(MAP_FAILED == m_DBAddress)
             {
+                close(m_DBFileDescriptor);
                 return;
             }
 
@@ -566,14 +567,29 @@ public:
         {
 #ifdef WINDOWS_PLATFORM
             // Unmap the file view
-            UnmapViewOfFile(m_DBAddress);
+            BOOL error = UnmapViewOfFile(m_DBAddress);
 
-    #else
+            if (FALSE == error)
+            {
+                // Nothing much you can do in this case..
+                m_IsOpen = false;
+            }
+
+            if(INVALID_HANDLE_VALUE != m_DBFileHandle)
+            {
+                CloseHandle(m_DBFileHandle);
+            }
+#else
             int error = munmap(m_DBAddress, m_Size);
             if(0 == error)
             {
                 // Nothing much you can do in this case..
                 m_IsOpen = false;
+            }
+
+            if(0 <= m_DBFileDescriptor)
+            {
+                close(m_DBFileDescriptor);
             }
 #endif
         }
@@ -643,8 +659,9 @@ protected:
     size_t m_Size;
     size_t m_NumRecords;
     char* m_DBAddress;
-
+    int m_DBFileDescriptor;
 #ifdef WINDOWS_PLATFORM
+    HANDLE m_DBFileHandle;
     HANDLE m_Mutex;
 #else
 #endif
